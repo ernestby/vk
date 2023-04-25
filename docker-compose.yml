@@ -1,0 +1,130 @@
+version: "3"
+
+services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: docker-sites-nginx
+    volumes:
+      - ./nginx/conf:/etc/nginx/conf.d/
+      # - ./nginx/mime.types/:/etc/nginx/mime.types
+      - ./src/sites:/var/www
+      - ./nginx/pass:/home
+      - ./src/logs/nginx:/var/log/nginx
+      - ./src/certbot/conf:/etc/letsencrypt
+      - ./src/certbot/www:/var/www/certbot
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "8181:8181"
+      - "9200:9200"
+      - "443:443"
+    command: '/bin/sh -c ''while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'''
+    depends_on:
+      - php71
+      - dashboard
+      # - api
+    links:
+      - php71
+      - php56
+    networks:
+      - docker-site-network
+  php71:
+    build: ./php71
+    container_name: docker-sites-php71
+    restart: unless-stopped
+    volumes:
+      - ./src/sites:/var/www
+      - ./php71/conf:/usr/local/etc/php
+    networks:
+      - docker-site-network
+  php72:
+    build: ./php72
+    container_name: docker-sites-php72
+    restart: unless-stopped
+    volumes:
+      - ./src/sites:/var/www
+
+    networks:
+      - docker-site-network
+  php56:
+    build: ./php56
+    container_name: docker-sites-php56
+    restart: unless-stopped
+    volumes:
+      - ./src/sites:/var/www
+      - ./php56/conf/php.ini:/usr/local/etc/php/php.ini
+    networks:
+      - docker-site-network
+  mysql:
+    image: mysql:5.7
+    container_name: docker-site-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=gdwg7Ph2mK5wBbXG
+    volumes:
+      - ./src/db:/var/lib/mysql
+      - ./mysql/my.cnf:/etc/my.cnf
+      - ./mysql/my2.cnf:/etc/mysql/mysql.conf.d/mysqld.cnf
+    networks:
+      - docker-site-network
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:5.0
+    container_name: docker-site-phpmyadmin
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    environment:
+      - PMA_ARBITRARY=1
+      - UPLOAD_LIMIT=300M
+    networks:
+      - docker-site-network
+  adminer:
+    image: adminer:latest
+    container_name: docker-site-adminer
+    restart: unless-stopped
+    networks:
+      - docker-site-network
+  elastic:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.8.14
+    container_name: docker-site-elastic
+    restart: unless-stopped
+    #command: chown 777:777 /usr/share/elasticsearch/data/nodes
+    volumes:
+      - ./src/elastic:/usr/share/elasticsearch/data/nodes
+    environment:
+      #- network.host=127.0.0.1
+      - network.host=0.0.0.0
+      - http.port=9200
+      #- node.name=elasticsearch-default-2
+      #- cluster.initial_master_nodes=elasticsearch-default-2
+      #- discovery.seed_hosts=elasticsearch-default-2:9200
+      #- cluster.name=elasticsearch-default
+      - discovery.type=single-node
+      #- bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - docker-site-network
+  certbot:
+    # Новый контейнер, который запуститься вместе с nginx
+    container_name: certbot
+    image: certbot/certbot
+    # Образ берется с docker hub
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    volumes:
+      - ./src/certbot/conf:/etc/letsencrypt
+      - ./src/certbot/www:/var/www/certbot
+    networks:
+      - docker-site-network
+    # Подключаем к той-же сети, что и остальные контейнеры
+
+networks:
+  docker-site-network:
+    driver: bridge
+
+volumes:
+  mysql_data:

@@ -1,0 +1,6 @@
+version: '3'
+
+services:
+  php56:
+    volumes:
+      - ./src/sites/smarty-studio.ru/includes/config.inc.dev.php:/var/www/smarty-studio.ru/includes/config.inc.php
